@@ -1,0 +1,49 @@
+{
+  "camera": {
+    "position": [
+      30.0,
+      45.0,
+      -30.0
+    ],
+    "rotation_deg": [
+      -30.0,
+      135.0,
+      0.0
+    ],
+    "pivot": [
+      0.0,
+      135.0,
+      0.0
+    ],
+    "fov": 45.0,
+    "near": 0.1,
+    "far": 1000.0
+  },
+  "light": {
+    "type": "spot",
+    "position": [
+      30.0,
+      30.0,
+      -30.0
+    ],
+    "rotation_deg": [
+      -20.0,
+      135.0,
+      0.0
+    ],
+    "pivot": [
+      0.0,
+      135.0,
+      0.0
+    ],
+    "cone_angle_deg": null,
+    "cone_delta_deg": 54.0
+  },
+  "meshes": [
+    {
+      "name": "prism",
+      "file": "prism.fbx"
+    }
+  ],
+  "instances": []
+}
