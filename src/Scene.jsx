@@ -7,10 +7,23 @@ import { useControls, Leva, button } from "leva";
 
 extend({ EffectComposer, RenderPass, ShaderPass });
 
+/**
+ * Utility to normalize ramp input from Leva so useTexture never crashes
+ */
+function useSafeTexture(rampFile) {
+  let path = "/ramp1.png"; // fallback default
+  if (typeof rampFile === "string") {
+    path = rampFile;
+  } else if (rampFile && typeof rampFile === "object" && "src" in rampFile) {
+    path = rampFile.src;
+  }
+  return useTexture(path);
+}
+
 // ------------------ PRISM ------------------
-function Prism() {
+function Prism({ rampFile }) {
   const fbx = useFBX("/prism.fbx");
-  const rampTex = useTexture("/ramp1.png");
+  const rampTex = useSafeTexture(rampFile);
 
   const { ambient } = useControls("Prism Shader", {
     ambient: { value: 0.2, min: 0.0, max: 1.0, step: 0.01 },
@@ -23,7 +36,7 @@ function Prism() {
   useEffect(() => {
     if (!fbx) return;
 
-    // Normalize size (largest X/Z ~ 20 units)
+    // Normalize size
     const box = new THREE.Box3().setFromObject(fbx);
     const size = new THREE.Vector3();
     box.getSize(size);
@@ -32,7 +45,7 @@ function Prism() {
     const scaleFactor = targetSize / maxDim;
     fbx.scale.setScalar(scaleFactor);
 
-    // Simple ramp-shaded phong-ish shader using your ramp texture
+    // Apply shader
     fbx.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = false;
@@ -57,7 +70,7 @@ function Prism() {
             varying vec3 vNormal;
             void main() {
               float diff = max(dot(normalize(vNormal), normalize(lightDir)), 0.0);
-              diff = mix(uAmbient, 1.0, diff);
+              diff = clamp(diff + uAmbient, 0.0, 1.0); // ✅ fixed ambient
               vec2 uv = vec2(diff, 0.5);
               vec3 rampColor = texture2D(rampTex, uv).rgb;
               gl_FragColor = vec4(rampColor, 1.0);
@@ -72,8 +85,8 @@ function Prism() {
 }
 
 // ------------------ BACKGROUND ------------------
-function BackgroundEnclosure() {
-  const rampTex = useTexture("/ramp1.png");
+function BackgroundEnclosure({ rampFile }) {
+  const rampTex = useSafeTexture(rampFile);
   const geometry = new THREE.BoxGeometry(500, 500, 500);
 
   const material = new THREE.ShaderMaterial({
@@ -103,7 +116,7 @@ function BackgroundEnclosure() {
   return <mesh geometry={geometry} material={material} />;
 }
 
-// ------------------ ORBITING TEXT (ring; readable from outside) ------------------
+// ------------------ ORBITING TEXT ------------------
 function OrbitingText() {
   const group = useRef();
 
@@ -129,10 +142,6 @@ function OrbitingText() {
         const x = Math.cos(angle) * orbitRadius;
         const z = Math.sin(angle) * orbitRadius;
 
-        // Check if the character is on the bottom half of the ring (from the perspective of the camera)
-        // A character is on the bottom half if its angle is between 90 and 270 degrees.
-        const isBottomHalf = angle > Math.PI / 2 && angle < (3 * Math.PI) / 2;
-
         return (
           <Text
             key={i}
@@ -142,8 +151,7 @@ function OrbitingText() {
             color="white"
             anchorX="center"
             anchorY="middle"
-            // Flip the character's rotation if it's on the bottom half
-            rotation={[0, angle + (isBottomHalf ? 0 : Math.PI), 0]}
+            rotation={[0, angle + Math.PI, 0]} // readable from outside
           >
             {ch}
           </Text>
@@ -213,14 +221,20 @@ function TDScene() {
   const controlsRef = useRef();
   const { gl } = useThree();
 
-  const { lockCamera } = useControls("Camera", {
-    lockCamera: { value: false }, // unlocked by default
+  const { lockCamera, rampFile, blackBackground } = useControls("Scene", {
+    lockCamera: { value: false },
     screenshot: button(() => {
       const link = document.createElement("a");
       link.download = "screenshot.png";
       link.href = gl.domElement.toDataURL("image/png");
       link.click();
     }),
+    rampFile: {
+      label: "Ramp Texture",
+      value: "/ramp1.png",
+      image: true,
+    },
+    blackBackground: { value: false }, // ✅ new toggle
   });
 
   useEffect(() => {
@@ -234,16 +248,16 @@ function TDScene() {
 
   return (
     <>
-      <BackgroundEnclosure />
+      {!blackBackground && <BackgroundEnclosure rampFile={rampFile} />}
       <CameraFromTD data={sceneData.camera} />
       <LightFromTD data={sceneData.light} />
-      <Prism />
+      <Prism rampFile={rampFile} />
       <OrbitingText />
       <OrbitControls
         ref={controlsRef}
         enabled={!lockCamera}
-        minDistance={25}   // keep out of the prism
-        maxDistance={200}  // keep inside the enclosure
+        minDistance={25}
+        maxDistance={200}
       />
     </>
   );
@@ -254,10 +268,11 @@ export default function Scene() {
     <>
       <Canvas
         shadows={false}
-        style={{ width: "100vw", height: "100vh", background: "black" }}
+        style={{ width: "100vw", height: "100vh" }}
         gl={{ antialias: true }}
         camera={{ near: 0.1, far: 2000 }}
       >
+        <color attach="background" args={["black"]} /> {/* default background */}
         <Suspense fallback={null}>
           <TDScene />
         </Suspense>
